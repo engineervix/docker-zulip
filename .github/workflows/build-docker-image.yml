@@ -22,7 +22,9 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck
-        run: bash -c 'shopt -s globstar nullglob; shellcheck **/*.{sh}'
+        shell: bash
+        run: |
+          shellcheck **/*.sh
 
   build:
     runs-on: ubuntu-24.04
