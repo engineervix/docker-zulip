@@ -14,17 +14,18 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install ShellCheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-
-      - name: Run ShellCheck
         shell: bash
         run: |
-          shellcheck **/*.sh
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        shell: bash
+        run: |
+          echo "${{ github.ref }}"
+          bash -c 'shopt -s globstar; shellcheck ./*.sh;'
 
   build:
     runs-on: ubuntu-24.04
