@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        docker-zulip-version: ["9.1.1"]
+        docker-zulip-version:
+          ["9.1.3", "9.2.0", "9.3.0", "9.4.0", "10.0.0", "10.1.0", "10.2.0"]
 
     steps:
       - name: Check out the repo
@@ -46,6 +47,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: engineervix/docker-zulip:${{ matrix.docker-zulip-version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           labels: |
             "org.opencontainers.image.title": "${{ matrix.docker-zulip-version }}",
             "org.opencontainers.image.description": "docker-zulip ${{ matrix.docker-zulip-version }} with arm64 support",
