@@ -1,6 +1,6 @@
 # Zulip
 
-![Version: 0.10.2](https://img.shields.io/badge/Version-0.10.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 10.2-0](https://img.shields.io/badge/AppVersion-10.2--0-informational?style=flat-square)
+![Version: 0.11.2](https://img.shields.io/badge/Version-0.11.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 11.2-0](https://img.shields.io/badge/AppVersion-11.2--0-informational?style=flat-square)
 
 [Zulip](https://zulip.com/) is an open source threaded team chat that helps teams stay productive and focused.
 
@@ -72,7 +72,7 @@ Now you're ready to follow [the installation instructions above](#installation).
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"zulip/docker-zulip"` |  |
-| image.tag | string | `"10.2-0"` |  |
+| image.tag | string | `"11.2-0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | ingress.annotations | object | `{}` |  |
 | ingress.enabled | bool | `false` |  |
@@ -143,6 +143,19 @@ are defined in the `values.yaml` under `zulip.environment`. These environment
 variables are forwarded to the Docker container, you can read more about
 configuring Zulip through environment variables
 [here](https://github.com/zulip/docker-zulip/#configuration).
+
+Variables can be either a plain scalar value (i.e., a string or
+integer), or a projected value from a secret or configmap.  For
+example:
+
+```yaml
+SETTING_EXTERNAL_HOST: zulip.example.com
+SECRETS_email_password:
+  valueFrom:
+    secretKeyRef:
+      name: email
+      key: password
+```
 
 ### Dependencies
 

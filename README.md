@@ -8,11 +8,11 @@
 Hub](https://hub.docker.com/r/zulip/docker-zulip):
 
 ```console
-$ docker pull zulip/docker-zulip:10.2-0
+$ docker pull zulip/docker-zulip:11.2-0
 ```
 
-Current Zulip version: `10.2`
-Current Docker image version: `10.2-0`
+Current Zulip version: `11.2`
+Current Docker image version: `11.2-0`
 
 We recommend using the Docker image if your organization has a
 preference for deploying services using Docker. Deploying with Docker
@@ -215,6 +215,14 @@ proxies][other-proxy].
 [apache2-proxy]: https://zulip.readthedocs.io/en/latest/production/reverse-proxies.html#apache2-configuration
 [haproxy-proxy]: https://zulip.readthedocs.io/en/latest/production/reverse-proxies.html#haproxy-configuration
 [other-proxy]: https://zulip.readthedocs.io/en/latest/production/reverse-proxies.html#other-proxies
+
+**Outgoing proxy**: Zulip uses [Smokescreen][smokescreen] to proxy all
+outgoing HTTP connections and prevent SSRF attacks.  If you have
+private IPs (e.g., outgoing webhook hosts on private IPs), you can set
+`PROXY_ALLOW_ADDRESSES` or `PROXY_ALLOW_RANGES` to comma-separated
+lists of IP addresses or CIDR ranges.
+
+[smokescreen]: https://zulip.readthedocs.io/en/latest/production/deployment.html#customizing-the-outgoing-http-proxy
 
 ### Manual configuration
 

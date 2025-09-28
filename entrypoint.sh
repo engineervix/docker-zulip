@@ -146,6 +146,25 @@ puppetConfiguration() {
         crudini --set /etc/zulip/zulip.conf loadbalancer ips "${LOADBALANCER_IPS}"
     fi
 
+    if [ -n "$PROXY_ALLOW_ADDRESSES" ]; then
+        echo "Setting outgoing proxy allowed private IPs"
+        crudini --set /etc/zulip/zulip.conf http_proxy allow_addresses "${PROXY_ALLOW_ADDRESSES}"
+    fi
+    if [ -n "$PROXY_ALLOW_RANGES" ]; then
+        echo "Setting outgoing proxy allowed private IP ranges"
+        crudini --set /etc/zulip/zulip.conf http_proxy allow_ranges "${PROXY_ALLOW_RANGES}"
+    fi
+
+    if [ "$DB_NAME" != "zulip" ]; then
+        echo "Setting database name to $DB_NAME"
+        crudini --set /etc/zulip/zulip.conf postgresql database_name "$DB_NAME"
+    fi
+
+    if [ "$DB_USER" != "zulip" ]; then
+        echo "Setting database user to $DB_USER"
+        crudini --set /etc/zulip/zulip.conf postgresql database_user "$DB_USER"
+    fi
+
     /home/zulip/deployments/current/scripts/zulip-puppet-apply -f
 }
 configureCerts() {
@@ -282,6 +301,7 @@ zulipConfiguration() {
            [ "$setting_key" = "SOCIAL_AUTH_OIDC_ENABLED_IDPS" ] || \
            [ "$setting_key" = "SOCIAL_AUTH_SAML_ENABLED_IDPS" ] || \
            [ "$setting_key" = "SOCIAL_AUTH_SAML_ORG_INFO" ] || \
+           [ "$setting_key" = "SOCIAL_AUTH_SYNC_ATTRS_DICT" ] || \
            { [ "$setting_key" = "LDAP_APPEND_DOMAIN" ] && [ "$setting_var" = "None" ]; } || \
            [ "$setting_key" = "SCIM_CONFIG" ] || \
            [ "$setting_key" = "SECURE_PROXY_SSL_HEADER" ] || \

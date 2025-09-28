@@ -27,11 +27,10 @@ WORKDIR /home/zulip
 # You can specify these in docker-compose.yml or with
 #   docker build --build-arg "ZULIP_GIT_REF=git_branch_name" .
 ARG ZULIP_GIT_URL=https://github.com/zulip/zulip.git
-ARG ZULIP_GIT_REF=10.2
+ARG ZULIP_GIT_REF=11.2
 
-RUN git clone "$ZULIP_GIT_URL" && \
-    cd zulip && \
-    git checkout -b current "$ZULIP_GIT_REF"
+RUN git clone "$ZULIP_GIT_URL" -b "$ZULIP_GIT_REF" && \
+    cd zulip
 
 WORKDIR /home/zulip/zulip
 
@@ -76,7 +75,7 @@ COPY entrypoint.sh /sbin/entrypoint.sh
 COPY certbot-deploy-hook /sbin/certbot-deploy-hook
 
 VOLUME ["$DATA_DIR"]
-EXPOSE 80 443
+EXPOSE 25 80 443
 
 ENTRYPOINT ["/sbin/entrypoint.sh"]
 CMD ["app:run"]
