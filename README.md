@@ -1,4 +1,12 @@
-# Zulip Docker image overview
+# Zulip Docker image overview (Fork - Archived)
+
+> [!IMPORTANT]
+> **This fork is no longer maintained.** It was originally created to add ARM64
+> support, which the upstream project now provides
+> natively. Please use the official repository instead:
+> <https://github.com/zulip/docker-zulip>
+
+---
 
 [![**docker** topic in **production-help** channel](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://chat.zulip.org/#narrow/channel/31-production-help/topic/docker)
 
