@@ -6,8 +6,14 @@
 .idea/
 *.tmproj
 
-# dev files
-docker-compose-dev.yml
-kubernetes/*-dev.yml
-kubernetes/chart/zulip/values-local.yaml
-kubernetes/chart/zulip/charts/
+# Secrets
+/.env
+
+# Local configuration
+/helm/zulip/values-local.yaml
+
+# Cached sub-charts
+/helm/zulip/charts/
+
+# Built docs
+/docs/_build/

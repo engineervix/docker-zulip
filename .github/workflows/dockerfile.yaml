@@ -1,0 +1,274 @@
+---
+name: Dockerfile lint and build
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Get commit SHA for current 11.x tip
+        id: get-sha
+        run: |
+          COMMIT=$(git ls-remote https://github.com/zulip/zulip.git refs/heads/11.x | cut -f1)
+          echo "commit_sha=$COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          tags: zulip/zulip-server:pr-${{ github.event.pull_request.number }}
+          outputs: type=docker,dest=/tmp/image.tar
+          build-args: |
+            ZULIP_GIT_REF=${{ steps.get-sha.outputs.commit_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload image
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  helm-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run helm-docs
+        uses: losisin/helm-docs-github-action@6f957579ac122ecc167bf515fe84e828686c9a15 # v1
+
+      - name: Run prettier over the re-generated docs
+        uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
+        with:
+          prettier_options: --write helm/zulip/README.md
+          no_commit: True
+
+      - name: Check for any diff
+        run: |
+          if ! git diff --exit-code; then
+            echo "Changes found!"
+            git status
+            git diff
+            exit 1
+          fi
+
+  helm-test:
+    runs-on: ubuntu-latest
+    needs:
+      - helm-docs
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.17.0
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.x"
+          check-latest: true
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@6ec842c01de15ebb84c8627d2744a0c2f2755c9f # v2.8.0
+        with:
+          version: 3.14.0
+          yamllint_version: 1.37.1
+          yamale_version: 6.0.0
+
+      - name: Set up helm repos
+        run: |
+          helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --chart-dirs helm/ \
+                                    --target-branch "$DEFAULT_BRANCH")
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Run chart-testing (lint)
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          ct lint --github-groups \
+                  --chart-dirs helm/ \
+                  --target-branch "$DEFAULT_BRANCH" \
+                  --lint-conf lintconf.yaml
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
+
+      - name: Download image
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image into kind
+        run: |
+          docker load --input /tmp/image.tar
+          kind load docker-image zulip/zulip-server:pr-${{ github.event.pull_request.number }} --name chart-testing
+
+      - name: Run chart-testing (install)
+        id: chart-testing-install
+        run: |
+          ct install --github-groups \
+                     --chart-dirs helm/ \
+                     --helm-extra-set-args "--set image.tag=pr-${{ github.event.pull_request.number }}" \
+                     --namespace=default \
+                     --skip-clean-up
+
+      - name: Fetch logs
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          kubectl get pods
+          for pod in $(kubectl get pods -o name); do
+              kubectl describe "$pod"
+          done
+          pod=$(kubectl get pods -l app.kubernetes.io/name=zulip --output name)
+          kubectl logs "$pod"
+          kubectl exec "$pod" -c zulip -- cat /var/log/zulip/errors.log
+
+  docker-compose-collect:
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.dirs.outputs.dirs }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - id: dirs
+        run: echo "dirs=$(ls -d ci/*/ | jq -Rnc '[inputs]')" >> ${GITHUB_OUTPUT}
+
+  docker-compose-test:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - docker-compose-collect
+    env:
+      GITHUB_CI_IMAGE: zulip/zulip-server:pr-${{ github.event.pull_request.number }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.docker-compose-collect.outputs.dirs) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Download image
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load --input /tmp/image.tar
+
+      - name: Verify Docker Compose config
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f ci/base.yaml \
+            --env-file ci/base.env \
+            -f "$DIR/compose.yaml" \
+            config
+        env:
+          DIR: ${{ matrix.dir }}
+
+      - name: Start Docker Compose services
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f ci/base.yaml \
+            --env-file ci/base.env \
+            -f "$DIR/compose.yaml" \
+            up -d --no-build
+        env:
+          DIR: ${{ matrix.dir }}
+
+      - name: Wait for services to be healthy
+        timeout-minutes: 5
+        run: |
+          echo "Waiting for zulip service to be healthy..."
+          until docker inspect --format "{{.State.Health.Status}}" $(docker compose ps -q zulip) | grep -q healthy; do sleep 5; done
+
+      - name: Verify all services are running
+        run: |
+          docker compose ps
+          # Check that no services are in a failed state
+          if docker compose ps | grep -E "(Exit|Restarting)"; then
+            exit 1
+          fi
+
+      - name: Run tests
+        timeout-minutes: 15
+        run: |
+          docker=("docker" "compose" \
+                  "-f" "compose.yaml" \
+                  "-f" "ci/base.yaml" \
+                  "--env-file" "ci/base.env" \
+                  "-f" "$DIR/compose.yaml")
+          manage=("${docker[@]}" "exec" "-u" "zulip" "zulip"
+                  "/home/zulip/deployments/current/manage.py")
+          hostname="localhost"
+          source "$DIR/test.sh"
+        env:
+          DIR: ${{ matrix.dir }}
+
+      - name: Check service logs for critical errors
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          docker compose ps
+          docker compose logs zulip

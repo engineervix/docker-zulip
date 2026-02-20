@@ -9,8 +9,8 @@ ENV LANG="C.UTF-8"
 
 ARG UBUNTU_MIRROR
 
-RUN { [ ! "$UBUNTU_MIRROR" ] || sed -i "s|http://\(\w*\.\)*archive\.ubuntu\.com/ubuntu/\? |$UBUNTU_MIRROR |" /etc/apt/sources.list; } && \
-    apt-get -q update && \
+# hadolint ignore=DL3005,DL3008,DL3009
+RUN apt-get -q update && \
     apt-get -q dist-upgrade -y && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get -q install --no-install-recommends -y ca-certificates git locales python3 sudo tzdata && \
@@ -27,14 +27,18 @@ WORKDIR /home/zulip
 # You can specify these in docker-compose.yml or with
 #   docker build --build-arg "ZULIP_GIT_REF=git_branch_name" .
 ARG ZULIP_GIT_URL=https://github.com/zulip/zulip.git
-ARG ZULIP_GIT_REF=11.2
+ARG ZULIP_GIT_REF=11.5
 
-RUN git clone "$ZULIP_GIT_URL" -b "$ZULIP_GIT_REF" && \
-    cd zulip
+LABEL org.opencontainers.image.source="https://github.com/zulip/docker-zulip"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.title="Zulip Server"
+LABEL org.opencontainers.image.version="$ZULIP_GIT_REF"
+
+RUN git clone "$ZULIP_GIT_URL" zulip
 
 WORKDIR /home/zulip/zulip
 
-ARG CUSTOM_CA_CERTIFICATES
+RUN git checkout "$ZULIP_GIT_REF"
 
 # Finally, we provision the development environment and build a release tarball
 RUN SKIP_VENV_SHELL_WARNING=1 ./tools/provision --build-release-tarball-only && \
@@ -51,20 +55,18 @@ ENV DATA_DIR="/data"
 COPY --from=build /tmp/zulip-server-docker.tar.gz /root/
 COPY custom_zulip_files/ /root/custom_zulip
 
-ARG CUSTOM_CA_CERTIFICATES
-
+WORKDIR /root
 RUN \
     # Make sure Nginx is started by Supervisor.
     dpkg-divert --add --rename /etc/init.d/nginx && \
     ln -s /bin/true /etc/init.d/nginx && \
     mkdir -p "$DATA_DIR" && \
-    cd /root && \
     tar -xf zulip-server-docker.tar.gz && \
     rm -f zulip-server-docker.tar.gz && \
     mv zulip-server-docker zulip && \
     cp -rf /root/custom_zulip/* /root/zulip && \
     rm -rf /root/custom_zulip && \
-    /root/zulip/scripts/setup/install --hostname="$(hostname)" --email="docker-zulip" \
+    /root/zulip/scripts/setup/install --hostname="docker-zulip.local" --email="docker-zulip" \
       --puppet-classes="zulip::profile::docker" --postgresql-version=14 && \
     rm -f /etc/zulip/zulip-secrets.conf /etc/zulip/settings.py && \
     apt-get -qq autoremove --purge -y && \
@@ -72,10 +74,12 @@ RUN \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY entrypoint.sh /sbin/entrypoint.sh
-COPY certbot-deploy-hook /sbin/certbot-deploy-hook
 
 VOLUME ["$DATA_DIR"]
 EXPOSE 25 80 443
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=300s \
+    CMD curl -isfL --insecure http://localhost/health || exit 1
 
 ENTRYPOINT ["/sbin/entrypoint.sh"]
 CMD ["app:run"]
